@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DATABASE_URLS: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB},postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/zevent-dev
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 40
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "16432:5432" # image's entrypoint always listens on 5432 internally;
+                      # real deployment uses pgbouncer.ini's listen_port=6432 directly
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:

@@ -1,0 +1,28 @@
+-- On srv-db, generate the real userlist.txt (never commit it) with the
+-- role's actual plaintext password, not a hash:
+--
+--   echo "\"zevent_user\" \"<the-real-password>\"" | sudo tee /etc/pgbouncer/userlist.txt
+--   sudo chown postgres:postgres /etc/pgbouncer/userlist.txt
+--   sudo chmod 640 /etc/pgbouncer/userlist.txt
+--
+-- Format is: "username" "plaintext-password"
+--
+-- Storing the plaintext (not an md5 hash, and NOT the SCRAM verifier
+-- pulled from pg_shadow.passwd) is deliberate, confirmed against a real
+-- deployment: PostgreSQL 16's pg_hba.conf here requires scram-sha-256,
+-- and a stored SCRAM verifier is *only* good for checking a client's
+-- proof — by design, it cannot be used to construct a valid proof, so
+-- PgBouncer can't use it to authenticate itself to the Postgres backend
+-- when opening a new pooled connection (confirmed via the real error:
+-- "cannot do SCRAM authentication: password is SCRAM secret but client
+-- authentication did not provide SCRAM keys"). Given the real plaintext,
+-- PgBouncer computes a fresh, correct SCRAM proof for both directions
+-- (client → PgBouncer, PgBouncer → Postgres) itself; file permissions
+-- (postgres:postgres, 640) are what protect it, same as this repo's
+-- other secrets (.env).
+"zevent_user" "<the-real-password-goes-here>"
+
+-- zevent_admin (pgbouncer admin console access) has no backing Postgres
+-- role, so there's no password to pull from Postgres — not set up yet.
+-- Adding it means picking a standalone password for a PgBouncer-only
+-- identity, which is a separate follow-up.
