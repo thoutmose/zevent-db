@@ -17,7 +17,7 @@ monitoring/Prometheus are out of scope here.
 - [Architecture](#architecture)
 - [Files](#files)
 - [Capacity planning (Zevent 2025 baseline)](#capacity-planning-zevent-2025-baseline)
-- [Scaling to absorb 10,000 TPS bursts](#scaling-to-absorb-10000-tps-bursts-2026-09-01-target-change)
+- [Scaling to absorb 20,000 TPS bursts](#scaling-to-absorb-20000-tps-bursts-2026-09-01-target-change)
 - [How this was verified](#how-this-was-verified)
 - [Usage](#usage)
 - [Not done here (explicitly out of scope)](#not-done-here-explicitly-out-of-scope)
@@ -47,7 +47,7 @@ flowchart LR
 - **Ingestion**: NiFi COPYs each batch into an `UNLOGGED` staging table
   (no WAL, no indexes), then one bulk `INSERT ... SELECT ... ON CONFLICT
   DO NOTHING` merges it into the real partitioned table — see
-  [Scaling to absorb 10,000 TPS bursts](#scaling-to-absorb-10000-tps-bursts-2026-09-01-target-change).
+  [Scaling to absorb 20,000 TPS bursts](#scaling-to-absorb-20000-tps-bursts-2026-09-01-target-change).
 - **Transform chain**: `raw` (bronze) → `stg` → `int` → `marts`, driven
   by `stg.refresh_chat_messages()`, `int.refresh_user_hourly_stats()`,
   `marts.refresh_top_users()` (or `marts.refresh_all()` for the whole
@@ -114,9 +114,9 @@ magnitude once checked against real viewer numbers).
   the idempotent insert pattern (`insert_example.sql`) and the
   backup/restore chain below.
 
-## Scaling to absorb 10,000 TPS bursts (2026-09-01 target change)
+## Scaling to absorb 20,000 TPS bursts (2026-09-01 target change)
 
-A stress test showed NiFi able to stream ~10,000 TPS while srv-db could
+A stress test showed NiFi able to stream ~20,000 TPS while srv-db could
 not keep up — roughly 50x the 188 msg/s peak the capacity planning above
 was sized against. This is a real requirement the database must now
 absorb without falling behind — but it's a burst-handling target, not a
@@ -173,7 +173,7 @@ never going to produce.
   never actually the constraint at 10k TPS on this box even before the
   upgrade (see benchmarks below); the upgrade buys cache headroom and
   connection headroom, not more insert throughput.
-- **10,000 TPS is a burst-absorption requirement, not the 55h average**
+- **20,000 TPS is a burst-absorption requirement, not the 55h average**
   (confirmed — the day/night viewer-count pattern in the original
   capacity planning still holds; 10k TPS is what a spike must not fall
   behind on, not a new constant rate). This matters for disk: raw+index
