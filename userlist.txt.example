@@ -22,6 +22,14 @@
 -- other secrets (.env).
 "zevent_user" "<the-real-password-goes-here>"
 
+-- zevent_readonly (added 2026-09-03): same rule, plaintext password here,
+-- reachable only via the zevent-ro / zevent-dev-ro database entries in
+-- pgbouncer.ini (NOT zevent/zevent-dev — those force backend
+-- user=zevent_user regardless of who logged in, which would silently give
+-- a readonly login full CRUD instead of the SELECT-only grants it has in
+-- Postgres).
+"zevent_readonly" "<the-real-password-goes-here>"
+
 -- zevent_admin (pgbouncer admin console access) has no backing Postgres
 -- role, so there's no password to pull from Postgres — not set up yet.
 -- Adding it means picking a standalone password for a PgBouncer-only
