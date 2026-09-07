@@ -77,8 +77,12 @@ flowchart LR
   every `backup.sh` — an untested backup is not a backup strategy.
 - `docker-compose.yml` — local Postgres + PgBouncer for testing the above
   before touching srv-db.
-- `.env` / `.env.example` / `.gitignore` / `userlist.txt.example` —
-  credentials for local testing kept out of the committed files.
+- `.env` / `.env.example` / `.gitignore` — local docker-compose
+  credentials, kept out of the committed files.
+- `userlist.txt.example` — template for PgBouncer's real
+  `/etc/pgbouncer/userlist.txt` on srv-db, not a local-testing file; see
+  the comments inside for the real deployment gotcha around SCRAM
+  plaintext passwords and the `zevent_readonly` entry.
 
 ## Capacity planning (Zevent 2025 baseline)
 
@@ -173,6 +177,24 @@ never going to produce.
   never actually the constraint at 10k TPS on this box even before the
   upgrade (see benchmarks below); the upgrade buys cache headroom and
   connection headroom, not more insert throughput.
+- **Read-only access added via PgBouncer (2026-09-03)**: the new
+  `zevent-ro` / `zevent-dev-ro` database entries in `pgbouncer.ini` force
+  `user=zevent_readonly` at the PgBouncer level, instead of routing
+  through the existing `zevent`/`zevent-dev` entries — those force every
+  backend connection to `zevent_user` regardless of who authenticated,
+  which would silently give a readonly client full CRUD. See
+  `pgbouncer.ini` and `userlist.txt.example` for the full auth story
+  (plaintext password, not a hash, for the same SCRAM reason as
+  `zevent_user`).
+- **`bgwriter_lru_maxpages` raised 100→1000 (2026-09-05)**, after a
+  `PostgresBackendBufferWritesHigh` alert: the default caps proactive
+  buffer cleaning at ~4MB/s, an order of magnitude under what one
+  COPY-to-staging bulk-merge burst can dirty at this ingest rate, so
+  backends were flushing their own pages instead of bgwriter staying
+  ahead of them. See the comment above this setting in
+  `postgresql.tuning.conf` for the follow-up condition — only touch
+  `bgwriter_delay`/`bgwriter_lru_multiplier` next if
+  `pg_stat_bgwriter.buffers_backend` is still elevated after this.
 - **10,000 TPS is a burst-absorption requirement, not the 55h average**
   (confirmed — the day/night viewer-count pattern in the original
   capacity planning still holds; 10k TPS is what a spike must not fall

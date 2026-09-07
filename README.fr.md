@@ -84,8 +84,13 @@ flowchart LR
   non testée n'est pas une stratégie de sauvegarde.
 - `docker-compose.yml` — Postgres + PgBouncer en local pour tester tout
   ce qui précède avant de toucher à srv-db.
-- `.env` / `.env.example` / `.gitignore` / `userlist.txt.example` —
-  identifiants pour les tests locaux, exclus des fichiers commités.
+- `.env` / `.env.example` / `.gitignore` — identifiants du
+  docker-compose local, exclus des fichiers commités.
+- `userlist.txt.example` — modèle pour le vrai
+  `/etc/pgbouncer/userlist.txt` de srv-db, pas un fichier de tests
+  locaux ; voir les commentaires à l'intérieur pour le piège réel de
+  déploiement autour des mots de passe SCRAM en clair et l'entrée
+  `zevent_readonly`.
 
 ## Dimensionnement de la capacité (référence Zevent 2025)
 
@@ -195,6 +200,26 @@ sur-dimensionner pour un volume que l'événement n'allait jamais produire.
   sur cette machine, même avant la mise à niveau (voir les benchmarks
   ci-dessous) ; la mise à niveau achète de la marge de cache et de
   connexions, pas plus de débit d'insertion.
+- **Accès lecture seule ajouté via PgBouncer (2026-09-03)** : les
+  nouvelles entrées de base `zevent-ro` / `zevent-dev-ro` dans
+  `pgbouncer.ini` forcent `user=zevent_readonly` au niveau de PgBouncer,
+  au lieu de router via les entrées existantes `zevent`/`zevent-dev` —
+  celles-ci forcent chaque connexion backend vers `zevent_user` quel que
+  soit l'identifiant authentifié, ce qui donnerait silencieusement un
+  accès CRUD complet à un client lecture seule. Voir `pgbouncer.ini` et
+  `userlist.txt.example` pour toute l'histoire de l'authentification
+  (mot de passe en clair, pas un hash, pour la même raison SCRAM que
+  `zevent_user`).
+- **`bgwriter_lru_maxpages` augmenté de 100 à 1000 (2026-09-05)**, suite
+  à une alerte `PostgresBackendBufferWritesHigh` : la valeur par défaut
+  plafonne le nettoyage proactif des buffers à environ 4MB/s, un ordre
+  de grandeur en dessous de ce qu'un pic de fusion en masse
+  COPY-vers-staging peut salir à ce rythme d'ingestion, donc les
+  backends finissaient par écrire leurs propres pages au lieu que
+  bgwriter reste devant eux. Voir le commentaire au-dessus de ce
+  paramètre dans `postgresql.tuning.conf` pour la condition de suivi —
+  ne toucher à `bgwriter_delay`/`bgwriter_lru_multiplier` que si
+  `pg_stat_bgwriter.buffers_backend` reste élevé après ce changement.
 - **10 000 TPS est un besoin d'absorption de pics, pas la moyenne sur
   55h** (confirmé — le pattern jour/nuit du nombre de spectateurs du
   dimensionnement de capacité d'origine reste valable ; 10k TPS est ce
